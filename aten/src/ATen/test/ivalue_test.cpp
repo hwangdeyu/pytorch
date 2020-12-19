@@ -51,6 +51,91 @@ TEST(IValueTest, Basic) {
   ASSERT_EQ(tv.use_count(), 2);
 }
 
+static std::array<IValue, 5> makeSampleIValues() {
+  return { at::rand({3, 4}), "hello", 42, true, 1.5 };
+}
+
+static std::array<IValue, 5> makeMoreSampleIValues() {
+  return { at::rand({3, 4}), "goodbye", 23, false, 0.5 };
+}
+
+// IValue::operator== doesn't seem to work on Tensors.
+#define EXPECT_IVALUE_EQ(a, b)                          \
+  EXPECT_EQ((a).isTensor(), (b).isTensor());            \
+  if ((a).isTensor()) {                                 \
+    EXPECT_TRUE(a.toTensor().equal(b.toTensor()));      \
+  } else {                                              \
+    EXPECT_EQ(a, b);                                    \
+  }
+
+TEST(IValueTest, Swap) {
+  // swap() has the following 3 cases: tensor, intrusive_ptr, or
+  // neither. Exercise all pairs of the three.
+
+  auto sampleInputs = makeSampleIValues();
+  auto sampleTargets = makeMoreSampleIValues();
+  for (const auto& input: sampleInputs) {
+    for (const auto& target: sampleTargets) {
+      IValue a(input);
+      IValue b(target);
+      EXPECT_IVALUE_EQ(a, input);
+      EXPECT_IVALUE_EQ(b, target);
+      a.swap(b);
+      EXPECT_IVALUE_EQ(a, target);
+      EXPECT_IVALUE_EQ(b, input);
+    }
+  }
+}
+
+TEST(IValueTest, CopyConstruct) {
+  auto sampleInputs = makeSampleIValues();
+  for (const IValue& v: sampleInputs) {
+    IValue copy(v);
+    EXPECT_IVALUE_EQ(copy, v);
+  }
+}
+
+TEST(IValueTest, MoveConstruct) {
+  auto sampleInputs = makeSampleIValues();
+  for (const IValue& v: sampleInputs) {
+    IValue source(v);
+    IValue target(std::move(source));
+    EXPECT_IVALUE_EQ(target, v);
+    EXPECT_TRUE(source.isNone());
+  }
+}
+
+TEST(IValueTest, CopyAssign) {
+  auto sampleInputs = makeSampleIValues();
+  auto sampleTargets = makeMoreSampleIValues();
+
+  for (const IValue& input: sampleInputs) {
+    for (const IValue& target: sampleTargets) {
+      IValue copyTo(target);
+      IValue copyFrom(input);
+      copyTo = copyFrom;
+      EXPECT_IVALUE_EQ(copyTo, input);
+      EXPECT_IVALUE_EQ(copyFrom, input);
+      EXPECT_IVALUE_EQ(copyTo, copyFrom);
+    }
+  }
+}
+
+TEST(IValueTest, MoveAssign) {
+  auto sampleInputs = makeSampleIValues();
+  auto sampleTargets = makeMoreSampleIValues();
+
+  for (const IValue& input: sampleInputs) {
+    for (const IValue& target: sampleTargets) {
+      IValue moveTo(target);
+      IValue moveFrom(input);
+      moveTo = std::move(moveFrom);
+      EXPECT_IVALUE_EQ(moveTo, input);
+      EXPECT_TRUE(moveFrom.isNone());
+    }
+  }
+}
+
 TEST(IValueTest, Tuple) {
   std::tuple<int64_t, at::Tensor> t = std::make_tuple(123, at::randn({1}));
   auto iv = IValue(t);
@@ -316,6 +401,29 @@ TEST(IValueTest, EnumEquality) {
       IValue(c10::make_intrusive<ivalue::EnumHolder>(
           string_enum_type, "enum_name_1", str_ivalue_1))
   );
+}
+
+TEST(IValueTest, isPtrType) {
+  IValue tensor(at::rand({3, 4}));
+  IValue integer(42);
+  IValue str("hello");
+
+  EXPECT_TRUE(tensor.isPtrType());
+  EXPECT_FALSE(integer.isPtrType());
+  EXPECT_TRUE(str.isPtrType());
+}
+
+TEST(IValueTest, isAliasOf) {
+  auto sampleIValues = makeSampleIValues();
+  for (auto& iv: sampleIValues) {
+    for (auto& iv2: sampleIValues) {
+      if (&iv == &iv2 && iv.isPtrType()) {
+        EXPECT_TRUE(iv.isAliasOf(iv2));
+      } else {
+        EXPECT_FALSE(iv.isAliasOf(iv2));
+      }
+    }
+  }
 }
 
 // TODO(gmagogsfm): Add type conversion test?
