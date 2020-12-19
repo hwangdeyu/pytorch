@@ -685,10 +685,12 @@ class QuantizationTestCase(TestCase):
             qgraph_to_check = qgraph_debug if debug else qgraph
             if print_debug_info:
                 print()
-                print('quant type:', quant_type)
-                print('original model:', model)
+                print('quant type:\n', quant_type)
+                print('original model:\n', model)
                 print()
-                print('quantized model:', qgraph_to_check)
+                print('prepared model:\n', prepared)
+                print()
+                print('quantized model:\n', qgraph_to_check)
                 self.printGraphModule(qgraph_to_check)
                 print()
             self.checkGraphModuleNodes(
